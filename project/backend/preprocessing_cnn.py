@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import pywt
 
-from .config import IMG_SIZE
+from config import IMG_SIZE
 
 def to_grey(img):
     return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY) if img.ndim == 3 else img
