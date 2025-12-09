@@ -1,11 +1,10 @@
-# TraceFinder - Forensic Scanner Identification
+# TraceFinder — Forensic Scanner Identification
 
-## 1. Project Statement
-The aim of this project is to **identify the source scanner device** used to scan a document or image by analyzing the unique patterns or artifacts left behind during the scanning process.  
+TraceFinder is a small forensic tool and demo that identifies the source scanner (brand/model characteristics) from scanned images by learning scanner-specific artifacts and noise signatures.
 
-Each scanner (brand/model) introduces specific noise, texture, or compression traces that can be learned by a machine learning model.  
+This repository contains a working backend API (FastAPI) that serves two model types and a Streamlit frontend to upload images and view predictions.
 
-This project is important in **forensic investigations**, **copyright authentication**, and **document verification tasks**.
+**Key goals:** detect scanner-specific traces, compare classical (XGBoost) and deep (CNN) approaches, and provide a simple demo UI.
 
 ---
 
@@ -36,14 +35,13 @@ By the end of this project, students will:
 ---
 
 ## 4. Dataset
-- **Source:** Kaggle  
-*(Additional manually collected samples may be added if needed.)*
+- **Source:** Kaggle  : [Dataset Link](https://www.kaggle.com/datasets/revsyko/tracer)
 
 ---
 
 ## 5. System Architecture
-*(Insert system architecture diagram here)*
-
+![System Architecture](<TraceFinder Architecture.png>)
+![Model Pipeline Details](<TraceFinder Pipeline.png>)
 ---
 
 ## 6. Modules to Be Implemented
@@ -74,101 +72,101 @@ By the end of this project, students will:
 
 ## 7. Week-wise Implementation Roadmap
 
-### **Milestone 1: Dataset Collection & Preprocessing**
+---
 
-#### Week 1:
-- Collect scanned document samples from different scanner devices (minimum **3–5 models/brands**).  
-- Create a labeled dataset (e.g., `scanner_model`, `file_name`, etc.).  
-- Analyze basic image properties such as resolution, format, and color channel.
+**Repository layout** (important files)
 
-#### Week 2:
-- Perform image preprocessing:
-  - Resize all images to a fixed dimension.  
-  - Convert to grayscale if needed.  
-  - Denoise (optional).  
-- Normalize and structure the dataset for model training.
+- `project/` — main project folder
+  - `backend/` — API + models + preprocessing
+    - `config.py` — model paths and image size
+    - `main.py` — FastAPI app exposing `/predict`
+    - `models_cnn.py` — wraps the Keras CNN model
+    - `models_xgb.py` — wraps the pickled XGBoost model
+    - `preprocessing_cnn.py` — CNN input preprocessing pipeline
+    - `preprocessing_xgb.py` — feature extraction for XGBoost
+  - `frontend/` — Streamlit demo app (`app.py`)
+  - `requirements.txt` — Python dependencies for backend/frontend
+- `models/` — (not checked into repo) expected trained model files referenced by `backend/config.py`
 
 ---
 
-### **Milestone 2: Feature Engineering & Baseline Modeling**
+**Implementation details**
 
-#### Week 3:
-- Extract hand-crafted features such as:
-  - Noise patterns.  
-  - Frequency domain features (e.g., FFT).  
-  - Texture descriptors (e.g., LBP).  
-- Visualize differences between scanner outputs (e.g., noise maps).
+- Backend: FastAPI (`project/backend/main.py`). It exposes `POST /predict` which accepts an image and a `model_choice` form value (`xgboost` or `cnn`). The API writes the uploaded file to `tmp/`, runs the selected model class (`XGBScannerModel` or `CNNScannerModel`) and returns JSON with labels, probabilities and confidence scores.
 
-#### Week 4:
-- Train baseline ML models (e.g., Logistic Regression, SVM, Random Forest).  
-- Evaluate using **accuracy** and **confusion matrix**.  
-- Log performance and identify limitations of hand-crafted features.
+- Models:
+  - CNN: Keras model loaded from `project/models/cnn_final_model.keras`. Predictions are returned as a single label + probability distribution. Preprocessing applies wavelet denoising and returns a single-channel normalized input of size defined by `IMG_SIZE` in `config.py`.
+  - XGBoost: scikit-learn/pickled model loaded from `project/models/xgb_model.pkl`. The pipeline extracts hand-crafted features (file size, intensity statistics, skew/kurtosis, entropy, edge density) and predicts for two density presets (150 DPI and 300 DPI). Returned JSON contains both `150dpi` and `300dpi` results.
 
 ---
 
-### **Milestone 3: Deep Learning Model + Explainability**
+Installation
 
-#### Week 5:
-- Build and train a **CNN model** on the raw image dataset.  
-- Use **image augmentation** for generalization (brightness, rotation).  
-- Tune **hyperparameters** and track training curves (accuracy/loss).
+1. Create a virtual environment and activate it (recommended):
 
-#### Week 6:
-- Evaluate model performance using **accuracy**, **F1-score**, and **confusion matrix**.  
-- Apply explainability tools such as **SHAP** or **Grad-CAM** to visualize how the model identifies scanner-specific patterns.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
 
----
+2. Install dependencies:
 
-### **Milestone 4: Deployment & Final Report**
+```bash
+pip install -r project/requirements.txt
+```
 
-#### Week 7:
-- Create a simple UI using **Streamlit** (or any frontend):
-  - Upload scanned image.  
-  - Get predicted scanner brand/model with confidence score.  
-- Log predictions and allow download of results.
+3. Ensure trained model files exist under `project/models/` as referenced in `project/backend/config.py`:
 
-#### Week 8:
-- Final documentation and formatting.  
-- Add system architecture, training results, model comparison, and screenshots.  
-- Prepare final presentation slides and demonstrate the working model.
+- `cnn_final_model.keras`
+- `cnn_label_encoder.pkl`
+- `xgb_model.pkl`
+- `label_encoder_scikit.pkl`
+
+If you don't have pre-trained models, see the Training section below.
 
 ---
 
-## 8. Evaluation Criteria
+Quickstart — run the demo
 
-### **Completion of Tasks**
-- Data collected and labeled correctly.  
-- Feature engineering and modeling completed.  
-- UI integration and testing done.
+1. Start the backend API (from repository root):
 
-### **Model Quality**
-- Classification accuracy **above baseline (ideally >85%)**.  
-- Model should distinguish between at least **3–5 scanners**.  
-- Robustness to image format and scan resolution.
+```bash
+uvicorn project.backend.main:app --host 0.0.0.0 --port 8000 --reload
+```
 
-### **Documentation & Demo**
-- Clear explanation of methodology.  
-- Model performance charts (accuracy, confusion matrix).  
-- Insights into feature importance (explainability).
+2. Start the Streamlit frontend (in a separate terminal):
 
----
+```bash
+streamlit run project/frontend/app.py
+```
 
-## 9. Model Performance – Quantitative Metrics
+3. Open the Streamlit UI (usually opened automatically) or go to `http://localhost:8501` and upload an image. Select `xgboost` or `cnn` and press Predict.
 
-### **Classification Metrics**
-- **Accuracy:** Correct scanner prediction rate.  
-- **Precision:** Correct predictions for each scanner class.  
-- **Recall:** Ability to detect all true scanner outputs.  
-- **F1-Score:** Balance of precision and recall.  
-- **Confusion Matrix:** Visualization of misclassification between scanner types.
+You can also call the API directly with `curl`:
 
-### **Feature Analysis**
-- Use **SHAP** or **Grad-CAM** (if CNN used) to show key areas.  
-- Validate that the model is **not biased** toward scan brightness or layout.
+```bash
+curl -F "model_choice=cnn" -F "file=@/path/to/scan.jpg" http://localhost:8000/predict
+```
 
 ---
 
-## 10. Conclusion
-This project aims to bridge forensic analysis and machine learning by identifying **scanner device signatures** embedded in scanned images.  
+Training (high level)
 
-Through advanced feature extraction, classification, and explainable AI, the **TraceFinder** system can significantly aid digital forensics, legal investigations, and document authenticity verification.
+- CNN: prepare a labeled dataset of scanned images per scanner model, preprocess using `preprocessing_cnn.py` logic (wavelet denoise, normalize, crop/resize to `IMG_SIZE`) and train a Keras model. Save the model and a label encoder into `project/models/`.
+- XGBoost: extract features using `preprocessing_xgb.py` and train an XGBoost classifier (or scikit-learn wrapper). Save the pickled model and label encoder into `project/models/`.
+
+Because training code and datasets are not included, training scripts should follow the preprocessing conventions in `project/backend/` to ensure compatibility.
+
+---
+Implementation Images
+![Console](Console.png) ![Inference](Processing.png) ![Model Selection](<Model Selection.png>) ![API Config](<API Config.png>) ![Result Prediction](<Result UI.png>) ![Application](<Application UI.png>) ![Backend API Documentation](<Backend API Docs.png>) ![Base UI](<Start UI.png>)
+---
+
+Notes & Troubleshooting
+
+- The backend expects common raster formats: `.tif`, `.tiff`, `.png`, `.jpg`, `.jpeg`.
+- If `uvicorn` fails to load models, verify the model files are present and paths in `project/backend/config.py` are correct.
+- For production use, secure the API and run the server behind a proper web server (Gunicorn, containers) and add input size limits and authentication.
+
+
+---
