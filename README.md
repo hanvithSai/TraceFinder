@@ -70,9 +70,7 @@ By the end of this project, students will:
 
 ---
 
-## 7. Week-wise Implementation Roadmap
-
----
+## 7. Implementation 
 
 **Repository layout** (important files)
 
