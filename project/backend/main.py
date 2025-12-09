@@ -2,8 +2,9 @@ import os
 import uuid
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 
-from .models_xgb import XGBScannerModel
-from .models_cnn import CNNScannerModel
+# Use non-relative imports so running `python main.py` works from the backend folder
+from models_xgb import XGBScannerModel
+from models_cnn import CNNScannerModel
 
 app = FastAPI(title="Scanner API")
 
@@ -31,7 +32,21 @@ async def predict(model_choice: str = Form(...), file: UploadFile = File(...)):
             result = cnn.predict(tmp_path)
         else:
             raise HTTPException(status_code=400, detail="Choose xgboost or cnn")
+    except RuntimeError as e:
+        # Convert runtime errors (e.g. missing deps or missing model files) to HTTP errors
+        raise HTTPException(status_code=500, detail=str(e))
     finally:
         os.remove(tmp_path)
 
     return result
+
+if __name__ == "__main__":
+    # Start uvicorn when running `python main.py`
+    try:
+        import uvicorn
+    except Exception:
+        raise SystemExit("uvicorn is required to run the server. Install with `pip install uvicorn`.")
+
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host=host, port=port, reload=True)
