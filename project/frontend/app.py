@@ -2,8 +2,12 @@ import streamlit as st
 import requests
 from PIL import Image
 import json
+import os
+import socket
+from urllib.parse import urlparse
 
-API_URL = "http://localhost:8000/predict"
+# Use env var as default but allow user override in UI
+API_URL = os.getenv("TRACEFINDER_API", "http://localhost:8000/predict")
 
 # Page configuration
 st.set_page_config(page_title="TraceFinder — Scanner Detection", layout="wide", page_icon="🔎")
@@ -15,12 +19,27 @@ def render_header():
             <div style='font-size:42px'>🔎</div>
             <div>
                 <h1 style='margin:0'>TraceFinder</h1>
-                <p style='margin:0;color:gray'>Scanner identification & trace source detection — demo</p>
+                <p style='margin:0;color:gray'>Scanner identification & trace source detection </p>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+def check_api_available(api_url, timeout=2):
+    """
+    Quick TCP check to see if host:port is reachable.
+    Returns (available: bool, msg: str)
+    """
+    try:
+        p = urlparse(api_url)
+        host = p.hostname or "localhost"
+        port = p.port or (443 if p.scheme == "https" else 80)
+        socket.create_connection((host, port), timeout=timeout).close()
+        return True, f"Reachable: {host}:{port}"
+    except Exception as e:
+        return False, str(e)
 
 
 def sidebar_info():
@@ -38,11 +57,63 @@ def sidebar_info():
     st.sidebar.markdown("---")
     st.sidebar.header("About")
     st.sidebar.info(
-        "TraceFinder was developed as part of a research/demo project to showcase scanner/source detection using classical and deep-learning approaches.\n\nBuilt with Python, Streamlit, XGBoost and Keras."
+        "TraceFinder was developed as part of a research project to showcase scanner/source detection using classical and deep-learning approaches.\n\nBuilt with Python, Streamlit, XGBoost and Keras."
     )
 
     st.sidebar.markdown("---")
     st.sidebar.caption("Repository: `TraceFinder` — contact: maintainer in README")
+
+    # API config + quick test
+    st.sidebar.markdown("---")
+    st.sidebar.header("API configuration")
+    api_input = st.sidebar.text_input("Prediction API URL", value=API_URL, help="Full URL to /predict endpoint (e.g. http://localhost:8000/predict)")
+    if st.sidebar.button("Test API connection"):
+        ok, msg = check_api_available(api_input)
+        if ok:
+            st.sidebar.success(f"OK — {msg}")
+        else:
+            st.sidebar.error("Cannot reach API: " + msg)
+            st.sidebar.markdown(
+                """
+                Quick troubleshooting:
+                - Make sure the backend is running (common command: `uvicorn main:app --reload --host 0.0.0.0 --port 8000`).
+                - If backend runs in WSL/docker, use the correct host (try 127.0.0.1 or container host).
+                - Check firewall or antivirus blocking port 8000.
+                - Test with curl: `curl -v <API_URL>` to see connection details.
+                """
+            )
+
+    # New: detailed backend run instructions & troubleshooting helper
+    with st.sidebar.expander("How to run the backend (commands & tips)", expanded=False):
+        st.markdown("Run these from the backend project folder.")
+        st.markdown("Python (virtualenv + uvicorn):")
+        st.code(
+            "python -m venv .venv\n"
+            "# Windows\n"
+            ".\\.venv\\Scripts\\activate\n"
+            "# macOS / Linux\n"
+            "source .venv/bin/activate\n"
+            "pip install -r requirements.txt  # or pip install fastapi uvicorn\n"
+            "uvicorn main:app --reload --host 0.0.0.0 --port 8000\n",
+            language="bash",
+        )
+        st.markdown("Docker (if a Dockerfile or docker-compose.yml exists):")
+        st.code(
+            "docker-compose up --build\n\n"
+            "# or build/run manually\n"
+            "docker build -t tracefinder-backend .\n"
+            "docker run -p 8000:8000 tracefinder-backend\n",
+            language="bash",
+        )
+        st.markdown("Quick tests and tips:")
+        st.markdown(
+            "- Test connection: `curl -v http://localhost:8000/predict` (any response shows the port is reachable).\n"
+            "- Visit `http://localhost:8000/docs` to see OpenAPI UI if FastAPI is used.\n"
+            "- If using WSL, ensure the server binds `0.0.0.0` and use `localhost` from Windows.\n"
+            "- If connection is refused, check that the process is running and that firewall/AV is not blocking port 8000."
+        )
+
+    return api_input
 
 
 def pretty_upload_area():
@@ -130,7 +201,8 @@ def show_prediction_results(out, placeholder):
 
 def main():
     render_header()
-    sidebar_info()
+    # call sidebar_info and retrieve API URL typed by user
+    api_from_sidebar = sidebar_info()
 
     model_choice, uploaded, predict_btn, placeholder = pretty_upload_area()
 
@@ -149,11 +221,25 @@ def main():
             st.warning("Please upload an image before predicting.")
             return
 
+        # use API URL from sidebar (fallback to default)
+        api_to_use = api_from_sidebar or API_URL
+
         with st.spinner("Sending image to prediction API..."):
             try:
                 files = {"file": (uploaded.name, uploaded.getvalue(), uploaded.type)}
                 data = {"model_choice": model_choice}
-                res = requests.post(API_URL, files=files, data=data, timeout=30)
+                res = requests.post(api_to_use, files=files, data=data, timeout=30)
+            except requests.exceptions.ConnectionError as e:
+                st.error(
+                    "Failed to reach API (connection error). Possible causes:\n"
+                    "- Backend not running on the configured host/port.\n"
+                    "- Wrong API URL (use http://127.0.0.1:8000/predict if needed).\n"
+                    "- Firewall or network blocking the port.\n\n"
+                    "Try:\n"
+                    "- Start the backend (e.g. `uvicorn main:app --reload --host 0.0.0.0 --port 8000`).\n"
+                    "- Test with curl: `curl -v {}`".format(api_to_use)
+                )
+                return
             except Exception as e:
                 st.error(f"Failed to reach API: {e}")
                 return
